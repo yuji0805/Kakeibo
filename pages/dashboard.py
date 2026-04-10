@@ -8,8 +8,13 @@ from budget import (
     calc_monthly_fixed_costs,
     calc_genre_budgets,
     calc_pace_status,
+    calc_ratio_status,
+    calc_status_hints,
     get_prev_month,
 )
+
+# ペースベース判定を使うジャンル
+PACE_GENRES = {"食費", "水代"}
 
 STATUS_EMOJI = {"余裕": "🟢", "適正": "🟢", "注意": "🟡", "使いすぎ": "🔴", "超過": "🔴⚠️", "—": ""}
 
@@ -59,20 +64,48 @@ for e in expenses:
     g = e["ジャンル"]
     spent_by_genre[g] = spent_by_genre.get(g, 0) + int(e["金額"])
 
+total_spent = sum(spent_by_genre.values())
+total_budget = sum(budgets.values())
+
 # ── ヘッダ ──
 st.markdown(f"### 🗓 {year}年{month}月（{current_day}日経過 / {total_days}日）")
 
 if not income_history:
-    st.warning("月収が未登録です。サイドバーの「月収・予算設定」から入力してください。")
+    st.warning("月収が未登録です。「月収・予算設定」から入力してください。")
 
+if st.button("＋ 支出を入力", use_container_width=True, type="primary", key="input_top"):
+    st.switch_page("pages/expense_input.py")
+
+# ── 合計支出メータ ──
 source = prev_income if prev_income else base_income
 variable_total = max(source - monthly_fixed, 0)
 
-c1, c2 = st.columns(2)
-c1.metric("基準月収", f"¥{base_income:,}")
-source_label = f"¥{prev_income:,}" if prev_income else f"¥{base_income:,}（基準）"
-c2.metric("予算原資（前月月収）", source_label)
+total_status, total_color, _ = calc_pace_status(total_spent, total_budget, current_day, total_days)
+total_emoji = STATUS_EMOJI.get(total_status, "")
+total_pct = min(total_spent / total_budget * 100, 100) if total_budget > 0 else 0
+total_remaining = total_budget - total_spent
+total_hints = calc_status_hints(total_spent, total_budget, current_day, total_days, use_pace=True)
 
+st.markdown(
+    f"""
+<div style="margin-bottom:.5rem;padding:.85rem;background:#1a1a2e;border-radius:8px;border:1px solid {total_color}44;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem;">
+    <strong>📊 今月の合計支出</strong><span>{total_status} {total_emoji}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:.85rem;color:#aaa;margin-bottom:.5rem;">
+    <span>¥{total_spent:,} / ¥{total_budget:,}</span><span>残り ¥{total_remaining:,}</span>
+  </div>
+  <div style="background:#333;border-radius:6px;height:14px;overflow:hidden;">
+    <div style="background:{total_color};width:{total_pct:.1f}%;height:100%;border-radius:6px;"></div>
+  </div>
+</div>""",
+    unsafe_allow_html=True,
+)
+
+if total_hints:
+    st.caption(" ／ ".join(total_hints))
+
+# ── 固定費・変動費予算 ──
 c3, c4 = st.columns(2)
 c3.metric("固定費", f"¥{monthly_fixed:,}")
 c4.metric("変動費予算", f"¥{variable_total:,}")
@@ -85,9 +118,16 @@ for g in genres:
     budget = budgets.get(name, 0)
     spent = spent_by_genre.get(name, 0)
     remaining = budget - spent
-    status, color, _ = calc_pace_status(spent, budget, current_day, total_days)
+
+    # 食費・水代はペースベース、それ以外は割合ベース
+    if name in PACE_GENRES:
+        status, color, _ = calc_pace_status(spent, budget, current_day, total_days)
+    else:
+        status, color, _ = calc_ratio_status(spent, budget)
+
     emoji = STATUS_EMOJI.get(status, "")
     pct = min(spent / budget * 100, 100) if budget > 0 else (100 if spent > 0 else 0)
+    hints = calc_status_hints(spent, budget, current_day, total_days, name in PACE_GENRES)
 
     st.markdown(
         f"""
@@ -105,7 +145,10 @@ for g in genres:
         unsafe_allow_html=True,
     )
 
-    # ＋/− ボタン（「その他」以外に表示、その他の予算が原資）
+    if hints:
+        st.caption(" ／ ".join(hints))
+
+    # ＋/− ボタン（「その他」以外に表示）
     if name != "その他":
         bcol1, bcol2, bcol3 = st.columns([1, 1, 3])
         current_adj = adjustments.get(name, 0)
@@ -121,25 +164,16 @@ for g in genres:
                 st.session_state[ADJUST_KEY] = adjustments
                 st.rerun()
 
+st.divider()
+
 # ── 保存ボタン ──
-has_unsaved = any(v != 0 for k, v in adjustments.items() if k != "その他")
 saved_adj = get_budget_adjustments(year_month)
 is_dirty = adjustments != saved_adj
-
 if is_dirty:
     if st.button("💾 予算調整を保存", use_container_width=True, type="primary"):
         save_budget_adjustments(year_month, adjustments)
         st.success("✅ 予算調整を保存しました")
         st.rerun()
-
-# ── フッタ ──
-total_spent = sum(spent_by_genre.values())
-total_budget = sum(budgets.values())
-st.divider()
-st.markdown(f"**合計支出: ¥{total_spent:,} / ¥{total_budget:,}**")
-
-if st.button("＋ 支出を入力", use_container_width=True, type="primary"):
-    st.switch_page("pages/expense_input.py")
 
 if st.button("🔄 データを更新", use_container_width=True):
     st.cache_data.clear()

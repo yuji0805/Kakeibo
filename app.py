@@ -1,6 +1,8 @@
 import streamlit as st
 
-st.set_page_config(page_title="家計簿", page_icon="💰", layout="centered")
+VERSION = "v1.0"
+
+st.set_page_config(page_title=f"家計簿 {VERSION}", page_icon="💰", layout="centered")
 
 # ── Google Sheets 未設定時のガイド ──
 if "gcp_service_account" not in st.secrets or "spreadsheet_id" not in st.secrets:
@@ -46,6 +48,8 @@ if "initialized" not in st.session_state:
     st.session_state["initialized"] = True
 
 # ── ナビゲーション ──
+st.sidebar.markdown(f"<small style='color:#666;'>{VERSION}</small>", unsafe_allow_html=True)
+
 pg = st.navigation(
     [
         st.Page("pages/dashboard.py", title="ダッシュボード", icon="📊", default=True),

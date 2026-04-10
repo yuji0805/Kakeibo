@@ -62,6 +62,74 @@ def calc_genre_budgets(
     return budgets
 
 
+def calc_status_hints(
+    spent: int, budget: int, current_day: int, total_days: int, use_pace: bool
+) -> list[str]:
+    """現在のステータスに応じた閾値までの金額ヒントを返す。"""
+    if budget <= 0:
+        return []
+
+    if use_pace:
+        elapsed = max(current_day / total_days, 0.05)
+        boundaries = [
+            int(0.8 * elapsed * budget),
+            int(1.0 * elapsed * budget),
+            int(1.2 * elapsed * budget),
+            budget,
+        ]
+    else:
+        boundaries = [
+            int(0.4 * budget),
+            int(0.7 * budget),
+            int(0.9 * budget),
+            budget,
+        ]
+
+    status_names = ["余裕", "適正", "注意", "使いすぎ", "超過"]
+
+    # 現在のインデックスを求める（0=余裕 〜 4=超過）
+    idx = sum(1 for b in boundaries if spent >= b)
+
+    hints: list[str] = []
+
+    if idx == 4:  # 超過
+        overspend = spent - budget
+        hints.append(f"¥{overspend:,} 超過中")
+        reduce = spent - boundaries[2] + 1
+        if reduce > 0:
+            hints.append(f"¥{reduce:,} 減らすと「使いすぎ」")
+    else:
+        # 悪化方向：次の閾値まで
+        diff_worse = boundaries[idx] - spent
+        if diff_worse > 0:
+            hints.append(f"あと ¥{diff_worse:,} で「{status_names[idx + 1]}」")
+        # 改善方向：前の閾値を下回るには
+        if idx > 0:
+            reduce = spent - boundaries[idx - 1] + 1
+            if reduce > 0:
+                hints.append(f"¥{reduce:,} 減らすと「{status_names[idx - 1]}」")
+
+    return hints
+
+
+def calc_ratio_status(spent: int, budget: int) -> tuple[str, str, float]:
+    """消費率のみでステータスを判定する（日付連動なし）。"""
+    if budget <= 0:
+        return ("超過", "#f44336", float("inf")) if spent > 0 else ("—", "#888", 0.0)
+
+    ratio = spent / budget
+
+    if ratio > 1.0:
+        return "超過", "#f44336", ratio
+    if ratio >= 0.9:
+        return "使いすぎ", "#f44336", ratio
+    if ratio >= 0.7:
+        return "注意", "#FFC107", ratio
+    if ratio >= 0.4:
+        return "適正", "#66BB6A", ratio
+    return "余裕", "#4CAF50", ratio
+
+
 def calc_pace_status(
     spent: int, budget: int, current_day: int, total_days: int
 ) -> tuple[str, str, float]:

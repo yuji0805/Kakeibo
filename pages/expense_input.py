@@ -6,7 +6,7 @@ from sheets import get_genre_settings, save_expense
 st.header("💰 支出入力")
 
 genres = get_genre_settings()
-genre_names = [g["ジャンル名"] for g in genres]
+genre_names = [g["ジャンル名"] for g in genres] + ["貯金"]
 
 with st.form("expense_form"):
     expense_date = st.date_input("日付", value=date.today())

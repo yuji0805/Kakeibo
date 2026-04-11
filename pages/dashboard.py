@@ -60,12 +60,21 @@ adjusted_budgets["その他"] = max(budgets.get("その他", 0) - total_adj, 0)
 budgets = adjusted_budgets
 
 spent_by_genre: dict[str, int] = {}
+savings_spent = 0
 for e in expenses:
     g = e["ジャンル"]
-    spent_by_genre[g] = spent_by_genre.get(g, 0) + int(e["金額"])
+    if g == "貯金":
+        savings_spent += int(e["金額"])
+    else:
+        spent_by_genre[g] = spent_by_genre.get(g, 0) + int(e["金額"])
 
 total_spent = sum(spent_by_genre.values())
 total_budget = sum(budgets.values())
+
+# ── 月末に変動費余剰を貯金から差し引き ──
+budget_surplus = max(total_budget - total_spent, 0)
+is_last_day = (current_day == total_days)
+net_savings = savings_spent - budget_surplus if is_last_day else savings_spent
 
 # ── ヘッダ ──
 st.markdown(f"### 🗓 {year}年{month}月（{current_day}日経過 / {total_days}日）")
@@ -103,12 +112,21 @@ st.markdown(
 )
 
 if total_hints:
-    st.caption(" ／ ".join(total_hints))
+    st.markdown(f"<small style='color:#aaa;'>{'　／　'.join(total_hints)}</small>", unsafe_allow_html=True)
 
 # ── 固定費・変動費予算 ──
-c3, c4 = st.columns(2)
+c3, c4, c5 = st.columns(3)
 c3.metric("固定費", f"¥{monthly_fixed:,}")
 c4.metric("変動費予算", f"¥{variable_total:,}")
+if is_last_day and budget_surplus > 0:
+    c5.metric(
+        "💰 今月くずした貯金（実質）",
+        f"¥{net_savings:,}",
+        delta=f"−¥{budget_surplus:,} 予算余り相殺",
+        delta_color="off",
+    )
+else:
+    c5.metric("💰 今月くずした貯金", f"¥{savings_spent:,}")
 
 st.divider()
 
@@ -146,7 +164,7 @@ for g in genres:
     )
 
     if hints:
-        st.caption(" ／ ".join(hints))
+        st.markdown(f"<small style='color:#aaa;'>{'　／　'.join(hints)}</small>", unsafe_allow_html=True)
 
     # ＋/− ボタン（「その他」以外に表示）
     if name != "その他":
